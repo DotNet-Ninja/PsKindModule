@@ -1,36 +1,54 @@
-function Sync-KindData{
+function Sync-PsKindConfig{
     param(
         [Parameter(Mandatory=$false, Position=0)]
-        [string] $Version = "0.14"
+        [string] $Version = "0.14.0"
     )
 
-    $dataUrl = "https://raw.githubusercontent.com/DotNet-Ninja/PsKindModule/main/data/kind.$Version.json"
+    Write-Verbose "Syncing PsKindConfig"
+    $dataUrl = "https://raw.githubusercontent.com/DotNet-Ninja/PsKindModule/main/data/kind.$Version.config.json"
     $destination = Get-KindDataPath $Version
-    Invoke-RestMethod $dataUrl -OutFile $destination -Force
+    Write-Verbose "Downloading $dataUrl to $destination"
+    Invoke-RestMethod $dataUrl -OutFile $destination | Out-Null
+    Write-Verbose "Download Complete"
 }
 
-function Get-KindDataPath{
-    param(
-        [Parameter(Mandatory=$false, Position=0)]
-        [string] $Version = "0.14"
-    )
-    return "$HOME\.pskind\kind.$Version.json"
-}
-
-function Get-KindData{
-    param(
-        [Parameter(Mandatory=$false, Position=0)]
-        [string] $Version = "0.14"
-    )
-    $path = Get-KindDataPath $Version
-    if(!(Test-Path($path))){
-        Sync-KindData $Version
+function Get-PsKindConfigPath{
+    $directory = [System.IO.Path]::Combine($HOME, ".pskind")
+    if(!(Test-Path($directory))){
+        Write-Verbose "Creating Data Directory ($directory)"
+        New-Item -Path $directory -ItemType Directory | Out-Null
     }
-    $data = Get-Content $path
-    $result = ConvertFrom-Json $data
-    return $result
+    $file = [System.IO.Path]::Combine($directory, "pskind.config.json")
+    return $file
 }
 
-Export-ModuleMember -Function Get-KindData
-Export-ModuleMember -Function Sync-KindData
-Export-ModuleMember -Function Get-KindDataPath
+function Get-PsKindConfig{
+    $version = Get-KindVersion
+    $path = Get-PsKindConfigPath
+    if(!(Test-Path($path))){        
+        Write-Verbose "PsKindConfig not found,  Initiating Sync"
+        Sync-PsKindConfig $Version
+    }
+    [string]$data = Get-Content $path
+    $config = ConvertFrom-Json $data
+    $configVersion = $config.Version
+    if($configVersion -ne $version){
+        Write-Verbose "PsKindConfig version mismatch.  Expected $version but found $configVersion"
+        Write-Verbose "Initiating PsConfigSync"
+        Sync-PsKindConfig $version
+        [string]$data = Get-Content $path
+        $config = ConvertFrom-Json $data
+    }
+    return $config
+}
+
+function Get-KindVersion{
+    $response = kind --version
+    $version = $response.SubString($response.LastIndexOf(" ")).Trim()
+    return $version
+}
+
+Export-ModuleMember -Function Get-PsKindConfig
+Export-ModuleMember -Function Sync-PsKindConfig
+Export-ModuleMember -Function Get-PsKindConfigPath
+Export-ModuleMember -Function Get-KindVersion
